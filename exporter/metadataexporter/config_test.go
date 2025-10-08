@@ -34,6 +34,10 @@ func TestLoadConfig(t *testing.T) {
 				BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 				QueueBatchConfig: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
 				DSN:              "tcp://localhost:9000",
+				TracesDatabase:   "signoz_traces",
+				LogsDatabase:     "signoz_logs",
+				MetricsDatabase:  "signoz_metrics",
+				MetadataDatabase: "signoz_metadata",
 				MaxDistinctValues: MaxDistinctValuesConfig{
 					Traces: LimitsConfig{
 						MaxKeys:                 100,

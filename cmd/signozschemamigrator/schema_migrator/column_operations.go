@@ -33,6 +33,11 @@ func (a AlterTableAddColumn) ForceMigrate() bool {
 	return false
 }
 
+func (a AlterTableAddColumn) SetDatabase(database string) Operation {
+	a.Database = database
+	return &a
+}
+
 func (a AlterTableAddColumn) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -89,6 +94,11 @@ func (a AlterTableDropColumn) OnCluster(cluster string) Operation {
 
 func (a AlterTableDropColumn) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableDropColumn) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
@@ -150,6 +160,11 @@ func (a AlterTableModifyColumn) OnCluster(cluster string) Operation {
 
 func (a AlterTableModifyColumn) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableModifyColumn) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
@@ -242,6 +257,11 @@ func (a AlterTableModifyColumnRemove) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableModifyColumnRemove) SetDatabase(database string) Operation {
+	a.Database = database
+	return &a
+}
+
 func (a AlterTableModifyColumnRemove) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -298,6 +318,11 @@ func (a AlterTableModifyColumnModifySettings) OnCluster(cluster string) Operatio
 
 func (a AlterTableModifyColumnModifySettings) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableModifyColumnModifySettings) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
@@ -364,6 +389,11 @@ func (a AlterTableModifyColumnResetSettings) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableModifyColumnResetSettings) SetDatabase(database string) Operation {
+	a.Database = database
+	return &a
+}
+
 func (a AlterTableModifyColumnResetSettings) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -425,6 +455,11 @@ func (a AlterTableMaterializeColumn) OnCluster(cluster string) Operation {
 
 func (a AlterTableMaterializeColumn) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableMaterializeColumn) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 

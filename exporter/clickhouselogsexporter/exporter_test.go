@@ -64,7 +64,7 @@ func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseLogsExporter {
 	opts := testOptions(t)
 	opts = append(opts, WithClickHouseClient(mock))
 	id := uuid.New()
-	opts = append(opts, WithNewUsageCollector(id, mock))
+	opts = append(opts, WithNewUsageCollector(id, mock, "signoz_logs"))
 
 	cfg := &Config{
 		DSN: "clickhouse://localhost:9000/test",
@@ -209,7 +209,7 @@ func TestGetResourceAttributesByte(t *testing.T) {
 func setupTestExporterWithConcurrency(t *testing.T, mock driver.Conn, concurrency int) *clickhouseLogsExporter {
 	opts := testOptions(t)
 	id := uuid.New()
-	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock), WithConcurrency(concurrency))
+	opts = append(opts, WithClickHouseClient(mock), WithNewUsageCollector(id, mock, databaseName), WithConcurrency(concurrency))
 
 	cfg := &Config{
 		DSN: "clickhouse://localhost:9000/test",
@@ -457,7 +457,7 @@ func TestProcessBody(t *testing.T) {
 			opts := testOptions(t)
 			opts = append(opts, WithClickHouseClient(nil))
 			id := uuid.New()
-			opts = append(opts, WithNewUsageCollector(id, nil))
+			opts = append(opts, WithNewUsageCollector(id, nil, databaseName))
 
 			exporter, err := newExporter(
 				exporter.Settings{},

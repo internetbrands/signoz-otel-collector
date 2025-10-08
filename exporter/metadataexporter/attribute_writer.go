@@ -15,8 +15,9 @@ import (
 // attributeMetadataWriter writes resource+attribute fingerprint records to
 // signoz_metadata.distributed_attributes_metadata.
 type attributeMetadataWriter struct {
-	conn   driver.Conn
-	logger *zap.Logger
+	conn            driver.Conn
+	logger          *zap.Logger
+	insertStmtQuery string
 
 	shouldSkipFromDB      func(ctx context.Context, key, datasource string) bool
 	filterAttrs           func(ctx context.Context, attrs map[string]any, datasource string) map[string]any
@@ -27,6 +28,7 @@ func newAttributeMetadataWriter(e *metadataExporter) *attributeMetadataWriter {
 	return &attributeMetadataWriter{
 		conn:                  e.conn,
 		logger:                e.set.Logger,
+		insertStmtQuery:       e.insertStmtQuery,
 		shouldSkipFromDB:      e.shouldSkipAttributeFromDB,
 		filterAttrs:           e.filterAttrs,
 		writeToStatementBatch: e.writeToStatementBatch,
@@ -34,7 +36,7 @@ func newAttributeMetadataWriter(e *metadataExporter) *attributeMetadataWriter {
 }
 
 func (w *attributeMetadataWriter) Process(ctx context.Context, ld plog.Logs) error {
-	stmt, err := w.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
+	stmt, err := w.conn.PrepareBatch(ctx, w.insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		w.logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalLogs.String()))
 		return nil

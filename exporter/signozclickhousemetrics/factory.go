@@ -36,6 +36,11 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		return nil, err
 	}
 
+	// Extract database name from DSN if provided, otherwise use config value
+	if connOptions.Auth.Database != "" {
+		chCfg.Database = connOptions.Auth.Database
+	}
+
 	conn, err := clickhouse.Open(connOptions)
 	if err != nil {
 		return nil, err
@@ -48,7 +53,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
 		},
-		"signoz_metrics",
+		chCfg.Database,
 		UsageExporter,
 		set.Logger,
 	)
