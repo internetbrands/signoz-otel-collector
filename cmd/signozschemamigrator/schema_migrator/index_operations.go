@@ -48,6 +48,11 @@ func (a AlterTableAddIndex) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableAddIndex) SetDatabase(database string) Operation {
+	a.Database = database
+	return &a
+}
+
 func (a AlterTableAddIndex) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -109,6 +114,11 @@ func (a AlterTableDropIndex) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableDropIndex) SetDatabase(database string) Operation {
+	a.Database = database
+	return &a
+}
+
 func (a AlterTableDropIndex) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -162,6 +172,11 @@ func (a AlterTableMaterializeIndex) OnCluster(cluster string) Operation {
 
 func (a AlterTableMaterializeIndex) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableMaterializeIndex) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
@@ -222,6 +237,11 @@ func (a AlterTableClearIndex) OnCluster(cluster string) Operation {
 
 func (a AlterTableClearIndex) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableClearIndex) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 

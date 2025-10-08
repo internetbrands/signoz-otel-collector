@@ -37,6 +37,9 @@ func createDefaultConfig() component.Config {
 		BackOffConfig:    configretry.NewDefaultBackOffConfig(),
 		QueueBatchConfig: exporterhelper.NewDefaultQueueConfig(),
 		DSN:              "tcp://localhost:9000",
+		TracesDatabase:   "signoz_traces",
+		LogsDatabase:     "signoz_logs",
+		MetricsDatabase:  "signoz_metrics",
 		MaxDistinctValues: MaxDistinctValuesConfig{
 			Traces: LimitsConfig{
 				MaxKeys:                 4096,

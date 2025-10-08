@@ -2,6 +2,7 @@ package metadataexporter
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -89,6 +90,12 @@ func newMetadataExporter(cfg Config, set exporter.Settings) (*metadataExporter, 
 	if err != nil {
 		return nil, err
 	}
+
+	// Extract database name from DSN if provided and config is still default
+	if opts.Auth.Database != "" && cfg.TracesDatabase == "signoz_traces" {
+		cfg.TracesDatabase = opts.Auth.Database
+	}
+
 	conn, err := clickhouse.Open(opts)
 	if err != nil {
 		return nil, err
@@ -226,13 +233,13 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		&updateParams{
 			logger: e.set.Logger,
 			conn:   e.conn,
-			query: `SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
-						 FROM signoz_logs.distributed_tag_attributes_v2
+			query: fmt.Sprintf(`SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
+						 FROM %s.distributed_tag_attributes_v2
 						 WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
 						 GROUP BY tag_key, tag_data_type
 						 ORDER BY number_value_count DESC, string_value_count DESC, tag_key
 						 LIMIT 1 BY tag_key, tag_data_type
-						 SETTINGS max_threads = 2`,
+						 SETTINGS max_threads = 2`, e.cfg.LogsDatabase),
 			storeFunc:  e.storeLogTagValues,
 			signalName: pipeline.SignalLogs.String(),
 			interval:   e.cfg.MaxDistinctValues.Logs.FetchInterval,
@@ -244,13 +251,13 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		&updateParams{
 			logger: e.set.Logger,
 			conn:   e.conn,
-			query: `SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
-						 FROM signoz_traces.distributed_tag_attributes_v2
+			query: fmt.Sprintf(`SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
+						 FROM %s.distributed_tag_attributes_v2
 						 WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
 						 GROUP BY tag_key, tag_data_type
 						 ORDER BY number_value_count DESC, string_value_count DESC, tag_key
 						 LIMIT 1 BY tag_key, tag_data_type
-						 SETTINGS max_threads = 2`,
+						 SETTINGS max_threads = 2`, e.cfg.TracesDatabase),
 			storeFunc:  e.storeTracesTagValues,
 			signalName: pipeline.SignalTraces.String(),
 			interval:   e.cfg.MaxDistinctValues.Traces.FetchInterval,

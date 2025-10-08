@@ -25,7 +25,7 @@ func WithLogger(logger *zap.Logger) LogExporterOption {
 	}
 }
 
-func WithNewUsageCollector(id uuid.UUID, db driver.Conn) LogExporterOption {
+func WithNewUsageCollector(id uuid.UUID, db driver.Conn, logsDatabase string) LogExporterOption {
 	return func(e *clickhouseLogsExporter) {
 		e.usageCollector = usage.NewUsageCollector(
 			id,
@@ -33,7 +33,7 @@ func WithNewUsageCollector(id uuid.UUID, db driver.Conn) LogExporterOption {
 			usage.Options{
 				ReportingInterval: usage.DefaultCollectionInterval,
 			},
-			"signoz_logs",
+			logsDatabase,
 			UsageExporter,
 			e.logger,
 		)
@@ -67,5 +67,11 @@ func WithKeysCache(keysCache *ttlcache.Cache[string, struct{}]) LogExporterOptio
 func WithRFCache(rfCache *ttlcache.Cache[string, struct{}]) LogExporterOption {
 	return func(e *clickhouseLogsExporter) {
 		e.rfCache = rfCache
+	}
+}
+
+func WithLogsDatabase(database string) LogExporterOption {
+	return func(e *clickhouseLogsExporter) {
+		e.logsDatabase = database
 	}
 }

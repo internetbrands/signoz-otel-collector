@@ -57,7 +57,7 @@ func setupTestExporter(t *testing.T, mock driver.Conn) *clickhouseLogsExporter {
 	opts := testOptions()
 	opts = append(opts, WithClickHouseClient(mock))
 	id := uuid.New()
-	opts = append(opts, WithNewUsageCollector(id, mock))
+	opts = append(opts, WithNewUsageCollector(id, mock, "signoz_logs"))
 
 	exporter, err := newExporter(
 		exporter.Settings{},
