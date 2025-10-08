@@ -79,7 +79,7 @@ func Test_shutdown(t *testing.T) {
 	}
 
 	conn.MatchExpectationsInOrder(false)
-	conn.ExpectPrepareBatch("INSERT INTO . (temporality, metric_name, description, unit, type, is_monotonic, labels, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
+	conn.ExpectPrepareBatch("INSERT INTO default. (temporality, metric_name, description, unit, type, is_monotonic, labels, fingerprint, unix_milli, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)") //samples query
 	conn.ExpectClose()
 	exporter, err := NewClickHouseExporter(zaptest.NewLogger(t), &Config{DSN: "tcp://localhost:9000?database=default"})
 	defaultConn := exporter.conn

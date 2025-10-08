@@ -34,15 +34,27 @@ func (cfg *collector) RegisterFlags(cmd *cobra.Command) {
 }
 
 type clickhouse struct {
-	DSN         string
-	Cluster     string
-	Replication bool
+	DSN               string
+	Cluster           string
+	Replication       bool
+	TraceDatabase     string
+	LogDatabase       string
+	MetricsDatabase   string
+	MetadataDatabase  string
+	AnalyticsDatabase string
+	MeterDatabase     string
 }
 
 func (cfg *clickhouse) RegisterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfg.DSN, "clickhouse-dsn", "tcp://0.0.0.0:9001", "DSN for clickhouse connection")
 	cmd.PersistentFlags().StringVar(&cfg.Cluster, "clickhouse-cluster", "cluster", "Name of the clickhouse cluster to connect")
 	cmd.PersistentFlags().BoolVar(&cfg.Replication, "clickhouse-replication", true, "Set true if replication is enabled in the clickhouse cluster")
+	cmd.PersistentFlags().StringVar(&cfg.TraceDatabase, "clickhouse-trace-database", "signoz_traces", "Traces database name")
+	cmd.PersistentFlags().StringVar(&cfg.LogDatabase, "clickhouse-log-database", "signoz_logs", "Logs database name")
+	cmd.PersistentFlags().StringVar(&cfg.MetricsDatabase, "clickhouse-metrics-database", "signoz_metrics", "Metrics database name")
+	cmd.PersistentFlags().StringVar(&cfg.MetadataDatabase, "clickhouse-metadata-database", "signoz_metadata", "Metadata database name")
+	cmd.PersistentFlags().StringVar(&cfg.AnalyticsDatabase, "clickhouse-analytics-database", "signoz_analytics", "Analytics database name")
+	cmd.PersistentFlags().StringVar(&cfg.MeterDatabase, "clickhouse-meter-database", "signoz_meter", "Meter database name")
 }
 
 type migrateReady struct {

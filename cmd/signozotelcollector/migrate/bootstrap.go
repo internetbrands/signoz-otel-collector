@@ -17,6 +17,7 @@ type bootstrap struct {
 	conn             clickhouse.Conn
 	cluster          string
 	migrationManager *schemamigrator.MigrationManager
+	dbNames          schemamigrator.DatabaseNames
 	timeout          time.Duration
 	logger           *zap.Logger
 }
@@ -26,7 +27,15 @@ func registerBootstrap(parentCmd *cobra.Command, logger *zap.Logger) {
 		Use:   "bootstrap",
 		Short: "Creates the necessary tables to track status of migrations. A migration table is typically created to track the status of migrations. This command creates the necessary tables to track the status of migrations.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			bootstrap, err := newBootstrap(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateBootstrap.Timeout, logger)
+			dbNames := schemamigrator.DatabaseNames{
+				Traces:    config.Clickhouse.TraceDatabase,
+				Logs:      config.Clickhouse.LogDatabase,
+				Metrics:   config.Clickhouse.MetricsDatabase,
+				Metadata:  config.Clickhouse.MetadataDatabase,
+				Analytics: config.Clickhouse.AnalyticsDatabase,
+				Meter:     config.Clickhouse.MeterDatabase,
+			}
+			bootstrap, err := newBootstrap(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateBootstrap.Timeout, dbNames, logger)
 			if err != nil {
 				return err
 			}
@@ -43,7 +52,7 @@ func registerBootstrap(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(cmd)
 }
 
-func newBootstrap(dsn string, cluster string, replication bool, timeout time.Duration, logger *zap.Logger) (*bootstrap, error) {
+func newBootstrap(dsn string, cluster string, replication bool, timeout time.Duration, dbNames schemamigrator.DatabaseNames, logger *zap.Logger) (*bootstrap, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -60,6 +69,7 @@ func newBootstrap(dsn string, cluster string, replication bool, timeout time.Dur
 		schemamigrator.WithConn(conn),
 		schemamigrator.WithConnOptions(*opts),
 		schemamigrator.WithLogger(logger),
+		schemamigrator.WithDatabaseNames(dbNames),
 	)
 	if err != nil {
 		return nil, err
@@ -69,6 +79,7 @@ func newBootstrap(dsn string, cluster string, replication bool, timeout time.Dur
 		conn:             conn,
 		cluster:          cluster,
 		migrationManager: migrationManager,
+		dbNames:          dbNames,
 		timeout:          timeout,
 		logger:           logger,
 	}, nil
@@ -134,7 +145,7 @@ func (cmd *bootstrap) CreateDatabases(ctx context.Context) error {
 		databases[database] = struct{}{}
 	}
 
-	for _, database := range schemamigrator.Databases {
+	for _, database := range cmd.dbNames.DBList() {
 		if _, ok := databases[database]; !ok {
 			command := fmt.Sprintf("CREATE DATABASE %s ON CLUSTER %s", database, cmd.cluster)
 			if err := cmd.conn.Exec(ctx, command); err != nil {
@@ -160,7 +171,7 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 				continue
 			}
 
-			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozLogsDB, true)
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, cmd.dbNames.Logs, true)
 			if err != nil {
 				return err
 			}
@@ -178,7 +189,7 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 				continue
 			}
 
-			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozMetricsDB, true)
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, cmd.dbNames.Metrics, true)
 			if err != nil {
 				return err
 			}
@@ -196,7 +207,7 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 				continue
 			}
 
-			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozMetricsDB, true)
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, cmd.dbNames.Traces, true)
 			if err != nil {
 				return err
 			}
@@ -214,7 +225,7 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 				continue
 			}
 
-			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozMetricsDB, true)
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, cmd.dbNames.Metadata, true)
 			if err != nil {
 				return err
 			}
@@ -232,7 +243,7 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 				continue
 			}
 
-			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozMetricsDB, true)
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, cmd.dbNames.Analytics, true)
 			if err != nil {
 				return err
 			}
@@ -250,7 +261,7 @@ func (cmd *bootstrap) CreateMigrationTables(ctx context.Context) error {
 				continue
 			}
 
-			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, schemamigrator.SignozMetricsDB, true)
+			err = cmd.migrationManager.RunOperation(ctx, operation, migration.MigrationID, cmd.dbNames.Meter, true)
 			if err != nil {
 				return err
 			}

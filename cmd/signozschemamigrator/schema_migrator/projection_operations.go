@@ -21,6 +21,11 @@ func (c CreateProjectionOperation) WithReplication() Operation {
 	return &c
 }
 
+func (c CreateProjectionOperation) SetDatabase(database string) Operation {
+	c.Database = database
+	return &c
+}
+
 func (c CreateProjectionOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, c.Database, c.Table
 }
@@ -74,6 +79,11 @@ func (d DropProjectionOperation) OnCluster(cluster string) Operation {
 
 func (d DropProjectionOperation) WithReplication() Operation {
 	// no-op
+	return &d
+}
+
+func (d DropProjectionOperation) SetDatabase(database string) Operation {
+	d.Database = database
 	return &d
 }
 

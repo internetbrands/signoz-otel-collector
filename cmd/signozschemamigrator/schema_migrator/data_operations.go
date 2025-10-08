@@ -29,6 +29,11 @@ func (i InsertIntoTable) WithReplication() Operation {
 	return &i
 }
 
+func (i InsertIntoTable) SetDatabase(database string) Operation {
+	i.Database = database
+	return &i
+}
+
 // ShouldWaitForDistributionQueue returns false as INSERTs do not start DDL queues.
 func (i InsertIntoTable) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, i.Database, i.Table

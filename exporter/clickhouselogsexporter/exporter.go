@@ -279,6 +279,7 @@ func (r *resourcesSeenMap) rangeAll(fn func(bucketTs int64, resourceKey, fingerp
 type clickhouseLogsExporter struct {
 	id                     uuid.UUID
 	db                     clickhouse.Conn
+	logsDatabase           string
 	insertLogsSQLV2        string
 	insertLogsResourceSQL  string
 	bodyJSONEnabled        bool
@@ -323,22 +324,24 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:           renderInsertLogsSQLV2(cfg.BodyJSONEnabled),
-		insertLogsResourceSQL:     renderInsertLogsResourceSQL(cfg),
+		logsDatabase:              databaseName, // default, will be overridden by WithLogsDatabase option if provided
 		cfg:                       cfg,
 		bodyJSONEnabled:           cfg.BodyJSONEnabled,
+		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
 		wg:                        new(sync.WaitGroup),
 		closeChan:                 make(chan struct{}),
 		maxDistinctValues:         cfg.AttributesLimits.MaxDistinctValues,
 		fetchKeysInterval:         cfg.AttributesLimits.FetchKeysInterval,
 		promotedPathsSyncInterval: *cfg.PromotedPathsSyncInterval,
-		bodyJSONOldBodyEnabled:    cfg.BodyJSONOldBodyEnabled,
 		limiter:                   make(chan struct{}, utils.Concurrency()),
 		maxAllowedDataAgeDays:     maxAllowedDataAgeDays,
 	}
 	for _, opt := range opts {
 		opt(e)
 	}
+	// Render SQL templates after database name is set by options
+	e.insertLogsSQLV2 = e.renderInsertLogsSQLV2()
+	e.insertLogsResourceSQL = e.renderInsertLogsResourceSQL()
 
 	// Ensure promotedPaths is always initialized so reads and type assertions are safe
 	e.promotedPaths.Store(map[string]struct{}{})
@@ -359,7 +362,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 		WHERE unix_milli >= (toUnixTimestamp(now() - toIntervalHour(6)) * 1000)
 		GROUP BY tag_key, tag_type, tag_data_type
 		HAVING string_count > %d OR number_count > %d
-		SETTINGS max_threads = 2`, databaseName, distributedTagAttributesV2, e.maxDistinctValues, e.maxDistinctValues)
+		SETTINGS max_threads = 2`, e.logsDatabase, distributedTagAttributesV2, e.maxDistinctValues, e.maxDistinctValues)
 
 	e.logger.Debug("fetching should skip keys", zap.String("query", query))
 
@@ -531,19 +534,19 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 	}
 
 	// Prepare batches first
-	tagStatementV2, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
+	tagStatementV2, err := e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", e.logsDatabase, distributedTagAttributesV2), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareTagBatchV2:%w", err)
 	}
 	defer tagStatementV2.Close()
 
-	attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
+	attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", e.logsDatabase, distributedLogsAttributeKeys), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
 	}
 	defer attributeKeysStmt.Close()
 
-	resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
+	resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", e.logsDatabase, distributedLogsResourceKeys), driver.WithReleaseConnection())
 	if err != nil {
 		return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
 	}
@@ -1019,11 +1022,11 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response a
 }
 
 // newClickhouseClient create a clickhouse client.
-func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
+func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, *clickhouse.Options, error) {
 	ctx := context.Background()
 	options, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// default settings for allowing ClickHouse to handle duplicate paths in JSON type.
@@ -1044,23 +1047,23 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 	db, err := clickhouse.Open(options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := db.Ping(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return db, nil
+	return db, options, nil
 }
 
-func renderInsertLogsSQLV2(includeBodyJSON bool) string {
+func (e *clickhouseLogsExporter) renderInsertLogsSQLV2() string {
 	template := insertLogsSQLTemplateV2
-	if includeBodyJSON {
+	if e.bodyJSONEnabled {
 		template = insertLogsSQLTemplateV2WithBodyJSON
 	}
-	return fmt.Sprintf(template, databaseName, distributedLogsTableV2)
+	return fmt.Sprintf(template, e.logsDatabase, distributedLogsTableV2)
 }
 
-func renderInsertLogsResourceSQL(_ *Config) string {
-	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
+func (e *clickhouseLogsExporter) renderInsertLogsResourceSQL() string {
+	return fmt.Sprintf(insertLogsResourceSQLTemplate, e.logsDatabase, distributedLogsResourceV2)
 }
