@@ -17,6 +17,7 @@ package clickhouselogsexporter
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,9 +65,20 @@ func createLogsExporter(
 ) (exporter.Logs, error) {
 	c := cfg.(*Config)
 
-	client, err := newClickhouseClient(set.Logger, c)
+	client, options, err := newClickhouseClient(set.Logger, c)
 	if err != nil {
 		return nil, fmt.Errorf("cannot configure clickhouse logs exporter: %w", err)
+	}
+
+	// Extract database name from DSN, fallback to default if not specified
+	// Priority: 1. Environment variable 2. DSN 3. Default
+	logsDatabase := databaseName
+	if options.Auth.Database != "" {
+		logsDatabase = options.Auth.Database
+	}
+	// Environment variable takes highest priority
+	if envDB := os.Getenv("CLICKHOUSE_LOG_DATABASE"); envDB != "" {
+		logsDatabase = envDB
 	}
 
 	id := uuid.New()
@@ -93,10 +105,11 @@ func createLogsExporter(
 	opts := []LogExporterOption{
 		WithClickHouseClient(client),
 		WithLogger(set.Logger),
-		WithNewUsageCollector(id, client),
+		WithNewUsageCollector(id, client, logsDatabase),
 		WithMeter(meter),
 		WithKeysCache(keysCache),
 		WithRFCache(rfCache),
+		WithLogsDatabase(logsDatabase),
 	}
 
 	exporter, err := newExporter(set, c, opts...)

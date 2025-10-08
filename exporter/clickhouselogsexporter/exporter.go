@@ -131,6 +131,7 @@ type statementSendDuration struct {
 type clickhouseLogsExporter struct {
 	id                    uuid.UUID
 	db                    clickhouse.Conn
+	logsDatabase          string
 	insertLogsSQLV2       string
 	insertLogsResourceSQL string
 
@@ -165,8 +166,7 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	}
 
 	e := &clickhouseLogsExporter{
-		insertLogsSQLV2:       renderInsertLogsSQLV2(cfg),
-		insertLogsResourceSQL: renderInsertLogsResourceSQL(cfg),
+		logsDatabase:          databaseName, // default, will be overridden by WithLogsDatabase option if provided
 		cfg:                   cfg,
 		wg:                    new(sync.WaitGroup),
 		closeChan:             make(chan struct{}),
@@ -176,6 +176,9 @@ func newExporter(_ exporter.Settings, cfg *Config, opts ...LogExporterOption) (*
 	for _, opt := range opts {
 		opt(e)
 	}
+	// Render SQL templates after database name is set by options
+	e.insertLogsSQLV2 = e.renderInsertLogsSQLV2()
+	e.insertLogsResourceSQL = e.renderInsertLogsResourceSQL()
 
 	return e, nil
 }
@@ -206,7 +209,7 @@ func (e *clickhouseLogsExporter) doFetchShouldSkipKeys() {
 		WHERE unix_milli >= (toUnixTimestamp(now() - toIntervalHour(6)) * 1000)
 		GROUP BY tag_key, tag_type, tag_data_type
 		HAVING string_count > %d OR number_count > %d
-		SETTINGS max_threads = 2`, databaseName, distributedTagAttributesV2, e.maxDistinctValues, e.maxDistinctValues)
+		SETTINGS max_threads = 2`, e.logsDatabase, distributedTagAttributesV2, e.maxDistinctValues, e.maxDistinctValues)
 
 	e.logger.Debug("fetching should skip keys", zap.String("query", query))
 
@@ -344,19 +347,19 @@ func (e *clickhouseLogsExporter) pushToClickhouse(ctx context.Context, ld plog.L
 		start := time.Now()
 		chLen := 5
 
-		tagStatementV2, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedTagAttributesV2), driver.WithReleaseConnection())
+		tagStatementV2, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", e.logsDatabase, distributedTagAttributesV2), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareTagBatchV2:%w", err)
 		}
 		defer tagStatementV2.Close()
 
-		attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsAttributeKeys), driver.WithReleaseConnection())
+		attributeKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", e.logsDatabase, distributedLogsAttributeKeys), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareAttributeKeysBatch:%w", err)
 		}
 		defer attributeKeysStmt.Close()
 
-		resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", databaseName, distributedLogsResourceKeys), driver.WithReleaseConnection())
+		resourceKeysStmt, err = e.db.PrepareBatch(ctx, fmt.Sprintf("INSERT INTO %s.%s", e.logsDatabase, distributedLogsResourceKeys), driver.WithReleaseConnection())
 		if err != nil {
 			return fmt.Errorf("PrepareResourceKeysBatch:%w", err)
 		}
@@ -737,11 +740,11 @@ func attributesToMap(attributes pcommon.Map, forceStringValues bool) (response a
 }
 
 // newClickhouseClient create a clickhouse client.
-func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
+func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, *clickhouse.Options, error) {
 	ctx := context.Background()
 	options, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
@@ -753,19 +756,19 @@ func newClickhouseClient(_ *zap.Logger, cfg *Config) (clickhouse.Conn, error) {
 
 	db, err := clickhouse.Open(options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if err := db.Ping(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return db, nil
+	return db, options, nil
 }
 
-func renderInsertLogsSQLV2(_ *Config) string {
-	return fmt.Sprintf(insertLogsSQLTemplateV2, databaseName, distributedLogsTableV2)
+func (e *clickhouseLogsExporter) renderInsertLogsSQLV2() string {
+	return fmt.Sprintf(insertLogsSQLTemplateV2, e.logsDatabase, distributedLogsTableV2)
 }
 
-func renderInsertLogsResourceSQL(_ *Config) string {
-	return fmt.Sprintf(insertLogsResourceSQLTemplate, databaseName, distributedLogsResourceV2)
+func (e *clickhouseLogsExporter) renderInsertLogsResourceSQL() string {
+	return fmt.Sprintf(insertLogsResourceSQLTemplate, e.logsDatabase, distributedLogsResourceV2)
 }

@@ -3,6 +3,8 @@ package signozclickhousemetrics
 import (
 	"context"
 	"errors"
+	"os"
+
 	"github.com/ClickHouse/clickhouse-go/v2"
 	internalmetadata "github.com/SigNoz/signoz-otel-collector/exporter/signozclickhousemetrics/internal/metadata"
 	"github.com/SigNoz/signoz-otel-collector/usage"
@@ -34,6 +36,16 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		return nil, err
 	}
 
+	// Extract database name from DSN if provided, otherwise use config value
+	// Priority: 1. Environment variable 2. DSN 3. Config default
+	if connOptions.Auth.Database != "" {
+		chCfg.Database = connOptions.Auth.Database
+	}
+	// Environment variable takes highest priority
+	if envDB := os.Getenv("CLICKHOUSE_DATABASE"); envDB != "" {
+		chCfg.Database = envDB
+	}
+
 	conn, err := clickhouse.Open(connOptions)
 	if err != nil {
 		return nil, err
@@ -46,7 +58,7 @@ func createMetricsExporter(ctx context.Context, set exporter.Settings,
 		usage.Options{
 			ReportingInterval: usage.DefaultCollectionInterval,
 		},
-		"signoz_metrics",
+		chCfg.Database,
 		UsageExporter,
 		set.Logger,
 	)

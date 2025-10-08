@@ -11,6 +11,7 @@ type TableEngine interface {
 	EngineType() string
 	OnCluster(cluster string) TableEngine
 	WithReplication() TableEngine
+	SetDatabase(database string) TableEngine
 }
 
 // TableSetting represents the setting of the table.
@@ -51,6 +52,11 @@ func (m MergeTree) OnCluster(cluster string) TableEngine {
 
 func (m MergeTree) WithReplication() TableEngine {
 	m.Replicated = true
+	return &m
+}
+
+func (m MergeTree) SetDatabase(database string) TableEngine {
+	// MergeTree engine doesn't reference database names
 	return &m
 }
 
@@ -111,6 +117,11 @@ func (r ReplacingMergeTree) WithReplication() TableEngine {
 	return &r
 }
 
+func (r ReplacingMergeTree) SetDatabase(database string) TableEngine {
+	// ReplacingMergeTree engine doesn't reference database names
+	return &r
+}
+
 func (r ReplacingMergeTree) EngineType() string {
 	if r.Replicated {
 		return "ReplicatedReplacingMergeTree"
@@ -139,6 +150,11 @@ func (a AggregatingMergeTree) WithReplication() TableEngine {
 	return &a
 }
 
+func (a AggregatingMergeTree) SetDatabase(database string) TableEngine {
+	// AggregatingMergeTree engine doesn't reference database names
+	return &a
+}
+
 func (a AggregatingMergeTree) EngineType() string {
 	if a.Replicated {
 		return "ReplicatedAggregatingMergeTree"
@@ -163,6 +179,11 @@ func (s SummingMergeTree) OnCluster(cluster string) TableEngine {
 
 func (s SummingMergeTree) WithReplication() TableEngine {
 	s.Replicated = true
+	return &s
+}
+
+func (s SummingMergeTree) SetDatabase(database string) TableEngine {
+	// SummingMergeTree engine doesn't reference database names
 	return &s
 }
 
@@ -195,6 +216,12 @@ func (d Distributed) OnCluster(cluster string) TableEngine {
 
 func (d Distributed) WithReplication() TableEngine {
 	// no-op
+	return &d
+}
+
+func (d Distributed) SetDatabase(database string) TableEngine {
+	// Update the database name in the Distributed engine
+	d.Database = database
 	return &d
 }
 
