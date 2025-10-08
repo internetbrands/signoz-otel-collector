@@ -43,6 +43,11 @@ func (c CreateTableOperation) WithReplication() Operation {
 	return &c
 }
 
+func (c CreateTableOperation) SetDatabase(database string) Operation {
+	c.Database = database
+	return &c
+}
+
 func (c CreateTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, c.Database, c.Table
 }
@@ -109,6 +114,11 @@ func (d DropTableOperation) WithReplication() Operation {
 	return &d
 }
 
+func (d DropTableOperation) SetDatabase(database string) Operation {
+	d.Database = database
+	return &d
+}
+
 func (d DropTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, d.Database, d.Table
 }
@@ -161,6 +171,11 @@ func (c CreateMaterializedViewOperation) OnCluster(cluster string) Operation {
 
 func (c CreateMaterializedViewOperation) WithReplication() Operation {
 	// no-op
+	return &c
+}
+
+func (c CreateMaterializedViewOperation) SetDatabase(database string) Operation {
+	c.Database = database
 	return &c
 }
 
@@ -231,6 +246,11 @@ func (c ModifyQueryMaterializedViewOperation) WithReplication() Operation {
 	return &c
 }
 
+func (c ModifyQueryMaterializedViewOperation) SetDatabase(database string) Operation {
+	c.Database = database
+	return &c
+}
+
 func (c ModifyQueryMaterializedViewOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, c.Database, c.ViewName
 }
@@ -278,6 +298,11 @@ func (d TruncateTableOperation) OnCluster(cluster string) Operation {
 
 func (d TruncateTableOperation) WithReplication() Operation {
 	// no-op
+	return &d
+}
+
+func (d TruncateTableOperation) SetDatabase(database string) Operation {
+	d.Database = database
 	return &d
 }
 
@@ -332,6 +357,11 @@ func (a AlterTableModifyTTL) OnCluster(cluster string) Operation {
 
 func (a AlterTableModifyTTL) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableModifyTTL) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
@@ -390,6 +420,11 @@ func (a AlterTableDropTTL) OnCluster(cluster string) Operation {
 
 func (a AlterTableDropTTL) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableDropTTL) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
