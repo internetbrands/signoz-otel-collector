@@ -39,6 +39,7 @@ func main() {
 			v := viper.New()
 
 			v.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+			v.SetEnvPrefix("CLICKHOUSE")
 			v.AutomaticEnv()
 
 			cmd.Flags().VisitAll(func(f *pflag.Flag) {
@@ -58,11 +59,18 @@ func main() {
 	var replicationEnabled bool
 	var clusterName string
 	var development bool
+	var tracesDB, logsDB, metricsDB, metadataDB, analyticsDB, meterDB string
 
 	cmd.PersistentFlags().StringVar(&dsn, "dsn", "", "Clickhouse DSN")
 	cmd.PersistentFlags().BoolVar(&replicationEnabled, "replication", false, "Enable replication")
 	cmd.PersistentFlags().StringVar(&clusterName, "cluster-name", "cluster", "Cluster name to use while running migrations")
 	cmd.PersistentFlags().BoolVar(&development, "dev", false, "Development mode")
+	cmd.PersistentFlags().StringVar(&tracesDB, "trace-database", "signoz_traces", "Traces database name")
+	cmd.PersistentFlags().StringVar(&logsDB, "log-database", "signoz_logs", "Logs database name")
+	cmd.PersistentFlags().StringVar(&metricsDB, "database", "signoz_metrics", "Metrics database name")
+	cmd.PersistentFlags().StringVar(&metadataDB, "metadata-database", "signoz_metadata", "Metadata database name")
+	cmd.PersistentFlags().StringVar(&analyticsDB, "analytics-database", "signoz_analytics", "Analytics database name")
+	cmd.PersistentFlags().StringVar(&meterDB, "meter-database", "signoz_meter", "Meter database name")
 
 	registerSyncMigrate(cmd)
 	registerAsyncMigrate(cmd)
@@ -88,7 +96,16 @@ func registerSyncMigrate(cmd *cobra.Command) {
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
-			logger.Info("Running migrations in sync mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
+			dbNames := schema_migrator.DatabaseNames{
+				Traces:    cmd.Flags().Lookup("trace-database").Value.String(),
+				Logs:      cmd.Flags().Lookup("log-database").Value.String(),
+				Metrics:   cmd.Flags().Lookup("database").Value.String(),
+				Metadata:  cmd.Flags().Lookup("metadata-database").Value.String(),
+				Analytics: cmd.Flags().Lookup("analytics-database").Value.String(),
+				Meter:     cmd.Flags().Lookup("meter-database").Value.String(),
+			}
+
+			logger.Info("Running migrations in sync mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName), zap.Any("databases", dbNames))
 
 			upVersions := []uint64{}
 			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
@@ -139,6 +156,7 @@ func registerSyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
 				schema_migrator.WithDevelopment(development),
+				schema_migrator.WithDatabaseNames(dbNames),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create migration manager: %w", err)
@@ -186,7 +204,16 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 			clusterName := cmd.Flags().Lookup("cluster-name").Value.String()
 			development := strings.ToLower(cmd.Flags().Lookup("dev").Value.String()) == "true"
 
-			logger.Info("Running migrations in async mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName))
+			dbNames := schema_migrator.DatabaseNames{
+				Traces:    cmd.Flags().Lookup("trace-database").Value.String(),
+				Logs:      cmd.Flags().Lookup("log-database").Value.String(),
+				Metrics:   cmd.Flags().Lookup("database").Value.String(),
+				Metadata:  cmd.Flags().Lookup("metadata-database").Value.String(),
+				Analytics: cmd.Flags().Lookup("analytics-database").Value.String(),
+				Meter:     cmd.Flags().Lookup("meter-database").Value.String(),
+			}
+
+			logger.Info("Running migrations in async mode", zap.String("dsn", dsn), zap.Bool("replication", replicationEnabled), zap.String("cluster-name", clusterName), zap.Any("databases", dbNames))
 
 			upVersions := []uint64{}
 			for _, version := range strings.Split(cmd.Flags().Lookup("up").Value.String(), ",") {
@@ -237,6 +264,7 @@ func registerAsyncMigrate(cmd *cobra.Command) {
 				schema_migrator.WithConnOptions(*opts),
 				schema_migrator.WithLogger(logger),
 				schema_migrator.WithDevelopment(development),
+				schema_migrator.WithDatabaseNames(dbNames),
 			)
 			if err != nil {
 				return fmt.Errorf("failed to create migration manager: %w", err)
