@@ -43,6 +43,13 @@ func (c CreateTableOperation) WithReplication() Operation {
 	return &c
 }
 
+func (c CreateTableOperation) SetDatabase(database string) Operation {
+	c.Database = database
+	// Also update the database in the engine (important for Distributed engine)
+	c.Engine = c.Engine.SetDatabase(database)
+	return &c
+}
+
 func (c CreateTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, c.Database, c.Table
 }
@@ -113,6 +120,11 @@ func (d DropTableOperation) WithReplication() Operation {
 	return &d
 }
 
+func (d DropTableOperation) SetDatabase(database string) Operation {
+	d.Database = database
+	return &d
+}
+
 func (d DropTableOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, d.Database, d.Table
 }
@@ -169,6 +181,21 @@ func (c CreateMaterializedViewOperation) OnCluster(cluster string) Operation {
 
 func (c CreateMaterializedViewOperation) WithReplication() Operation {
 	// no-op
+	return &c
+}
+
+func (c CreateMaterializedViewOperation) SetDatabase(database string) Operation {
+	// Update the database for the view itself
+	oldDatabase := c.Database
+	c.Database = database
+
+	// Replace all references to the old database name in the query with the new database name
+	// Using the "." suffix ensures we only replace database.table references (e.g., "signoz_traces.table")
+	// and not partial matches within column names or other strings
+	if oldDatabase != "" && oldDatabase != database {
+		c.Query = strings.ReplaceAll(c.Query, oldDatabase+".", database+".")
+	}
+
 	return &c
 }
 
@@ -243,6 +270,21 @@ func (c ModifyQueryMaterializedViewOperation) WithReplication() Operation {
 	return &c
 }
 
+func (c ModifyQueryMaterializedViewOperation) SetDatabase(database string) Operation {
+	// Update the database for the view itself
+	oldDatabase := c.Database
+	c.Database = database
+
+	// Replace all references to the old database name in the query with the new database name
+	// Using the "." suffix ensures we only replace database.table references (e.g., "signoz_traces.table")
+	// and not partial matches within column names or other strings
+	if oldDatabase != "" && oldDatabase != database {
+		c.Query = strings.ReplaceAll(c.Query, oldDatabase+".", database+".")
+	}
+
+	return &c
+}
+
 func (c ModifyQueryMaterializedViewOperation) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, c.Database, c.ViewName
 }
@@ -294,6 +336,11 @@ func (d TruncateTableOperation) OnCluster(cluster string) Operation {
 
 func (d TruncateTableOperation) WithReplication() Operation {
 	// no-op
+	return &d
+}
+
+func (d TruncateTableOperation) SetDatabase(database string) Operation {
+	d.Database = database
 	return &d
 }
 
@@ -352,6 +399,11 @@ func (a AlterTableModifyTTL) OnCluster(cluster string) Operation {
 
 func (a AlterTableModifyTTL) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableModifyTTL) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 
@@ -417,6 +469,11 @@ func (a AlterTableDropTTL) WithReplication() Operation {
 	return &a
 }
 
+func (a AlterTableDropTTL) SetDatabase(database string) Operation {
+	a.Database = database
+	return &a
+}
+
 func (a AlterTableDropTTL) ShouldWaitForDistributionQueue() (bool, string, string) {
 	return false, a.Database, a.Table
 }
@@ -469,6 +526,11 @@ func (a AlterTableModifySettings) OnCluster(cluster string) Operation {
 
 func (a AlterTableModifySettings) WithReplication() Operation {
 	// no-op
+	return &a
+}
+
+func (a AlterTableModifySettings) SetDatabase(database string) Operation {
+	a.Database = database
 	return &a
 }
 

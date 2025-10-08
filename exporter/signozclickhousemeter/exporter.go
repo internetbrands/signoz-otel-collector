@@ -53,6 +53,11 @@ func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickh
 		return nil, err
 	}
 
+	// Extract database name from DSN if provided, otherwise use config value
+	if connOptions.Auth.Database != "" {
+		cfg.Database = connOptions.Auth.Database
+	}
+
 	conn, err := clickhouse.Open(connOptions)
 	if err != nil {
 		return nil, err

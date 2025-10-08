@@ -46,7 +46,7 @@ func setupBenchmarkExporter(b *testing.B, mock driver.Conn) *clickhouseLogsExpor
 		WithConcurrency(4),
 	}
 	id := uuid.New()
-	opts = append(opts, WithNewUsageCollector(id, mock))
+	opts = append(opts, WithNewUsageCollector(id, mock, databaseName))
 
 	exporter, err := newExporter(
 		exporter.Settings{},
