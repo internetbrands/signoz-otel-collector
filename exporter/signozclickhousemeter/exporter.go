@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"sync"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -51,6 +52,16 @@ func NewClickHouseExporter(logger *zap.Logger, config component.Config) (*clickh
 	connOptions, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, err
+	}
+
+	// Extract database name from DSN if provided, otherwise use config value
+	// Priority: 1. Environment variable 2. DSN 3. Config default
+	if connOptions.Auth.Database != "" {
+		cfg.Database = connOptions.Auth.Database
+	}
+	// Environment variable takes highest priority
+	if envDB := os.Getenv("CLICKHOUSE_METER_DATABASE"); envDB != "" {
+		cfg.Database = envDB
 	}
 
 	conn, err := clickhouse.Open(connOptions)
