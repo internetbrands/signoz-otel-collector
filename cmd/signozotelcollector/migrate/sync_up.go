@@ -18,6 +18,7 @@ type syncUp struct {
 	conn             clickhouse.Conn
 	cluster          string
 	migrationManager *schemamigrator.MigrationManager
+	dbNames          schemamigrator.DatabaseNames
 	timeout          time.Duration
 	logger           *zap.Logger
 }
@@ -28,7 +29,15 @@ func registerSyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 		Short:        "Runs 'up' sync migrations for the store. Up migrations are used to apply new migrations to the store.",
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			up, err := newSyncUp(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncUp.Timeout, logger)
+			dbNames := schemamigrator.DatabaseNames{
+				Traces:    config.Clickhouse.TraceDatabase,
+				Logs:      config.Clickhouse.LogDatabase,
+				Metrics:   config.Clickhouse.MetricsDatabase,
+				Metadata:  config.Clickhouse.MetadataDatabase,
+				Analytics: config.Clickhouse.AnalyticsDatabase,
+				Meter:     config.Clickhouse.MeterDatabase,
+			}
+			up, err := newSyncUp(config.Clickhouse.DSN, config.Clickhouse.Cluster, config.Clickhouse.Replication, config.MigrateSyncUp.Timeout, dbNames, logger)
 			if err != nil {
 				return err
 			}
@@ -47,7 +56,7 @@ func registerSyncUp(parentCmd *cobra.Command, logger *zap.Logger) {
 	parentCmd.AddCommand(syncUpCommand)
 }
 
-func newSyncUp(dsn string, cluster string, replication bool, timeout time.Duration, logger *zap.Logger) (*syncUp, error) {
+func newSyncUp(dsn string, cluster string, replication bool, timeout time.Duration, dbNames schemamigrator.DatabaseNames, logger *zap.Logger) (*syncUp, error) {
 	opts, err := clickhouse.ParseDSN(dsn)
 	if err != nil {
 		return nil, err
@@ -64,12 +73,17 @@ func newSyncUp(dsn string, cluster string, replication bool, timeout time.Durati
 		schemamigrator.WithConn(conn),
 		schemamigrator.WithConnOptions(*opts),
 		schemamigrator.WithLogger(logger),
+		schemamigrator.WithDatabaseNames(dbNames),
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &syncUp{
 		conn:             conn,
 		cluster:          cluster,
 		migrationManager: migrationManager,
+		dbNames:          dbNames,
 		timeout:          timeout,
 		logger:           logger,
 	}, nil
@@ -110,7 +124,7 @@ func (cmd *syncUp) SyncUp(ctx context.Context) error {
 	}
 
 	cmd.logger.Info("running sync migrations")
-	err = cmd.run(ctx, schemamigrator.TracesMigrations, schemamigrator.SignozTracesDB)
+	err = cmd.run(ctx, schemamigrator.TracesMigrations, cmd.dbNames.Traces)
 	if err != nil {
 		return err
 	}
@@ -120,27 +134,27 @@ func (cmd *syncUp) SyncUp(ctx context.Context) error {
 		logsMigrations = schemamigrator.LogsMigrationsV2
 	}
 
-	err = cmd.run(ctx, logsMigrations, schemamigrator.SignozLogsDB)
+	err = cmd.run(ctx, logsMigrations, cmd.dbNames.Logs)
 	if err != nil {
 		return err
 	}
 
-	err = cmd.run(ctx, schemamigrator.MetricsMigrations, schemamigrator.SignozMetricsDB)
+	err = cmd.run(ctx, schemamigrator.MetricsMigrations, cmd.dbNames.Metrics)
 	if err != nil {
 		return err
 	}
 
-	err = cmd.run(ctx, schemamigrator.MetadataMigrations, schemamigrator.SignozMetadataDB)
+	err = cmd.run(ctx, schemamigrator.MetadataMigrations, cmd.dbNames.Metadata)
 	if err != nil {
 		return err
 	}
 
-	err = cmd.run(ctx, schemamigrator.AnalyticsMigrations, schemamigrator.SignozAnalyticsDB)
+	err = cmd.run(ctx, schemamigrator.AnalyticsMigrations, cmd.dbNames.Analytics)
 	if err != nil {
 		return err
 	}
 
-	err = cmd.run(ctx, schemamigrator.MeterMigrations, schemamigrator.SignozMeterDB)
+	err = cmd.run(ctx, schemamigrator.MeterMigrations, cmd.dbNames.Meter)
 	if err != nil {
 		return err
 	}
@@ -150,9 +164,9 @@ func (cmd *syncUp) SyncUp(ctx context.Context) error {
 
 func (cmd *syncUp) runSquashedMigrations(ctx context.Context) error {
 	squashedMigrations := map[string][]schemamigrator.SchemaMigrationRecord{
-		schemamigrator.SignozLogsDB:    schemamigrator.CustomRetentionLogsMigrations,
-		schemamigrator.SignozMetricsDB: schemamigrator.SquashedMetricsMigrations,
-		schemamigrator.SignozTracesDB:  schemamigrator.SquashedTracesMigrations,
+		cmd.dbNames.Logs:    schemamigrator.CustomRetentionLogsMigrations,
+		cmd.dbNames.Metrics: schemamigrator.SquashedMetricsMigrations,
+		cmd.dbNames.Traces:  schemamigrator.SquashedTracesMigrations,
 	}
 
 	for database, migrations := range squashedMigrations {

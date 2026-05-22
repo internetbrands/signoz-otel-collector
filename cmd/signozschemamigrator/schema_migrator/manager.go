@@ -29,18 +29,49 @@ var (
 	ErrDistributionQueueError           = errors.New("distribution_queue has entries with error_count != 0 or is_blocked = 1")
 
 	legacyMigrationsTable = "schema_migrations"
-	SignozLogsDB          = "signoz_logs"
-	SignozMetricsDB       = "signoz_metrics"
-	SignozTracesDB        = "signoz_traces"
-	SignozMetadataDB      = "signoz_metadata"
-	SignozAnalyticsDB     = "signoz_analytics"
-	SignozMeterDB         = "signoz_meter"
-	Databases             = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
 
 	InProgressStatus = "in-progress"
 	FinishedStatus   = "finished"
 	FailedStatus     = "failed"
 )
+
+const (
+	SignozLogsDB      = "signoz_logs"
+	SignozMetricsDB   = "signoz_metrics"
+	SignozTracesDB    = "signoz_traces"
+	SignozMetadataDB  = "signoz_metadata"
+	SignozAnalyticsDB = "signoz_analytics"
+	SignozMeterDB     = "signoz_meter"
+)
+
+var Databases = []string{SignozTracesDB, SignozMetricsDB, SignozLogsDB, SignozMetadataDB, SignozAnalyticsDB, SignozMeterDB}
+
+// DatabaseNames holds the names of all databases used by the migrator
+type DatabaseNames struct {
+	Logs      string
+	Metrics   string
+	Traces    string
+	Metadata  string
+	Analytics string
+	Meter     string
+}
+
+// DefaultDatabaseNames returns the default database names
+func DefaultDatabaseNames() DatabaseNames {
+	return DatabaseNames{
+		Logs:      SignozLogsDB,
+		Metrics:   SignozMetricsDB,
+		Traces:    SignozTracesDB,
+		Metadata:  SignozMetadataDB,
+		Analytics: SignozAnalyticsDB,
+		Meter:     SignozMeterDB,
+	}
+}
+
+// DBList returns a slice of all database names
+func (d DatabaseNames) DBList() []string {
+	return []string{d.Traces, d.Metrics, d.Logs, d.Metadata, d.Analytics, d.Meter}
+}
 
 type Mutation struct {
 	Database         string    `ch:"database"`
@@ -83,6 +114,7 @@ type MigrationManager struct {
 	logger             *zap.Logger
 	backoff            *backoff.ExponentialBackOff
 	development        bool
+	dbNames            DatabaseNames
 }
 
 type Option func(*MigrationManager)
@@ -96,6 +128,7 @@ func NewMigrationManager(opts ...Option) (*MigrationManager, error) {
 		backoff:            backoff.NewExponentialBackOff(),
 		replicationEnabled: false,
 		conns:              make(map[string]clickhouse.Conn),
+		dbNames:            DefaultDatabaseNames(),
 	}
 	for _, opt := range opts {
 		opt(mgr)
@@ -148,14 +181,21 @@ func WithBackoff(backoff *backoff.ExponentialBackOff) Option {
 	}
 }
 
+func WithDatabaseNames(dbNames DatabaseNames) Option {
+	return func(mgr *MigrationManager) {
+		mgr.dbNames = dbNames
+	}
+}
+
 func (m *MigrationManager) createDBs() error {
-	for _, db := range Databases {
+	dbs := m.dbNames.DBList()
+	for _, db := range dbs {
 		cmd := fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s ON CLUSTER %s", db, m.clusterName)
 		if err := m.conn.Exec(context.Background(), cmd); err != nil {
 			return errors.Join(ErrFailedToCreateDBs, err)
 		}
 	}
-	m.logger.Info("Created databases", zap.Strings("dbs", Databases))
+	m.logger.Info("Created databases", zap.Strings("dbs", dbs))
 	return nil
 }
 
@@ -167,7 +207,7 @@ func (m *MigrationManager) Bootstrap() error {
 	m.logger.Info("Creating schema migrations tables")
 	for _, migration := range V2MigrationTablesLogs {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozLogsDB, true); err != nil {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, m.dbNames.Logs, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -175,7 +215,7 @@ func (m *MigrationManager) Bootstrap() error {
 
 	for _, migration := range V2MigrationTablesMetrics {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozMetricsDB, true); err != nil {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, m.dbNames.Metrics, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -183,7 +223,7 @@ func (m *MigrationManager) Bootstrap() error {
 
 	for _, migration := range V2MigrationTablesTraces {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozTracesDB, true); err != nil {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, m.dbNames.Traces, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -191,7 +231,7 @@ func (m *MigrationManager) Bootstrap() error {
 
 	for _, migration := range V2MigrationTablesMetadata {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozMetadataDB, true); err != nil {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, m.dbNames.Metadata, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -199,7 +239,7 @@ func (m *MigrationManager) Bootstrap() error {
 
 	for _, migration := range V2MigrationTablesAnalytics {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozAnalyticsDB, true); err != nil {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, m.dbNames.Analytics, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -207,7 +247,7 @@ func (m *MigrationManager) Bootstrap() error {
 
 	for _, migration := range V2MigrationTablesMeter {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(context.Background(), item, migration.MigrationID, SignozMeterDB, true); err != nil {
+			if err := m.RunOperation(context.Background(), item, migration.MigrationID, m.dbNames.Meter, true); err != nil {
 				return errors.Join(ErrFailedToCreateSchemaMigrationsV2, err)
 			}
 		}
@@ -259,7 +299,7 @@ func (m *MigrationManager) ShouldRunSquashedV2(ctx context.Context, db string) (
 
 func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for logs")
-	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
+	should, err := m.shouldRunSquashed(ctx, m.dbNames.Logs)
 	if err != nil {
 		return err
 	}
@@ -271,7 +311,7 @@ func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Conte
 	m.logger.Info("Running custom retention migrations for logs")
 	for _, migration := range CustomRetentionLogsMigrations {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, "signoz_logs", false); err != nil {
+			if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Logs, false); err != nil {
 				return err
 			}
 		}
@@ -283,7 +323,7 @@ func (m *MigrationManager) runCustomRetentionMigrationsForLogs(ctx context.Conte
 //nolint:unused
 func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for logs")
-	should, err := m.shouldRunSquashed(ctx, "signoz_logs")
+	should, err := m.shouldRunSquashed(ctx, m.dbNames.Logs)
 	if err != nil {
 		return err
 	}
@@ -295,7 +335,7 @@ func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) err
 	m.logger.Info("Running squashed migrations for logs")
 	for _, migration := range SquashedLogsMigrations {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, "signoz_logs", false); err != nil {
+			if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Logs, false); err != nil {
 				return err
 			}
 		}
@@ -306,7 +346,7 @@ func (m *MigrationManager) runSquashedMigrationsForLogs(ctx context.Context) err
 
 func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for metrics")
-	should, err := m.shouldRunSquashed(ctx, SignozMetricsDB)
+	should, err := m.shouldRunSquashed(ctx, m.dbNames.Metrics)
 	if err != nil {
 		return err
 	}
@@ -317,7 +357,7 @@ func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) 
 	m.logger.Info("Running squashed migrations for metrics")
 	for _, migration := range SquashedMetricsMigrations {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, SignozMetricsDB, false); err != nil {
+			if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Metrics, false); err != nil {
 				return err
 			}
 		}
@@ -328,7 +368,7 @@ func (m *MigrationManager) runSquashedMigrationsForMetrics(ctx context.Context) 
 
 func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) error {
 	m.logger.Info("Checking if should run squashed migrations for traces")
-	should, err := m.shouldRunSquashed(ctx, SignozTracesDB)
+	should, err := m.shouldRunSquashed(ctx, m.dbNames.Traces)
 	if err != nil {
 		return err
 	}
@@ -339,7 +379,7 @@ func (m *MigrationManager) runSquashedMigrationsForTraces(ctx context.Context) e
 	m.logger.Info("Running squashed migrations for traces")
 	for _, migration := range SquashedTracesMigrations {
 		for _, item := range migration.UpItems {
-			if err := m.RunOperation(ctx, item, migration.MigrationID, SignozTracesDB, false); err != nil {
+			if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Traces, false); err != nil {
 				return err
 			}
 		}
@@ -754,10 +794,10 @@ func (m *MigrationManager) IsAsyncOperation(item Operation) bool {
 func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint64) error {
 	m.logger.Info("Running migrations up sync")
 	for _, migration := range TracesMigrations {
-		if !m.shouldRunMigration(SignozTracesDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Traces, migration.MigrationID, upVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozTracesDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, m.dbNames.Traces); err != nil {
 			return err
 		}
 	}
@@ -768,46 +808,46 @@ func (m *MigrationManager) MigrateUpSync(ctx context.Context, upVersions []uint6
 	}
 
 	for _, migration := range logsMigrations {
-		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Logs, migration.MigrationID, upVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozLogsDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, m.dbNames.Logs); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range MetricsMigrations {
-		if !m.shouldRunMigration(SignozMetricsDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Metrics, migration.MigrationID, upVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozMetricsDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, m.dbNames.Metrics); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range MetadataMigrations {
-		if !m.shouldRunMigration(SignozMetadataDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Metadata, migration.MigrationID, upVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozMetadataDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, m.dbNames.Metadata); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range AnalyticsMigrations {
-		if !m.shouldRunMigration(SignozAnalyticsDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Analytics, migration.MigrationID, upVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozAnalyticsDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, m.dbNames.Analytics); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range MeterMigrations {
-		if !m.shouldRunMigration(SignozMeterDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Meter, migration.MigrationID, upVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, SignozMeterDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.UpItems, migration.MigrationID, m.dbNames.Meter); err != nil {
 			return err
 		}
 	}
@@ -821,10 +861,10 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 	m.logger.Info("Running migrations down sync")
 
 	for _, migration := range TracesMigrations {
-		if !m.shouldRunMigration(SignozTracesDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Traces, migration.MigrationID, downVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozTracesDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, m.dbNames.Traces); err != nil {
 			return err
 		}
 	}
@@ -835,37 +875,37 @@ func (m *MigrationManager) MigrateDownSync(ctx context.Context, downVersions []u
 	}
 
 	for _, migration := range logsMigrations {
-		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Logs, migration.MigrationID, downVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozLogsDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, m.dbNames.Logs); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range MetricsMigrations {
-		if !m.shouldRunMigration(SignozMetricsDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Metrics, migration.MigrationID, downVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozMetricsDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, m.dbNames.Metrics); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range AnalyticsMigrations {
-		if !m.shouldRunMigration(SignozAnalyticsDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Analytics, migration.MigrationID, downVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozAnalyticsDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, m.dbNames.Analytics); err != nil {
 			return err
 		}
 	}
 
 	for _, migration := range MeterMigrations {
-		if !m.shouldRunMigration(SignozMeterDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Meter, migration.MigrationID, downVersions) {
 			continue
 		}
-		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, SignozMeterDB); err != nil {
+		if err := m.executeSyncOperations(ctx, migration.DownItems, migration.MigrationID, m.dbNames.Meter); err != nil {
 			return err
 		}
 	}
@@ -878,7 +918,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 
 	m.logger.Info("Running migrations up async")
 	for _, migration := range TracesMigrations {
-		if !m.shouldRunMigration(SignozTracesDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Traces, migration.MigrationID, upVersions) {
 			continue
 		}
 		for _, item := range migration.UpItems {
@@ -893,7 +933,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 				continue
 			}
 			if item.IsIdempotent() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, SignozTracesDB, false); err != nil {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Traces, false); err != nil {
 					return err
 				}
 			}
@@ -901,7 +941,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 	}
 
 	for _, migration := range MetricsMigrations {
-		if !m.shouldRunMigration(SignozMetricsDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Metrics, migration.MigrationID, upVersions) {
 			continue
 		}
 		for _, item := range migration.UpItems {
@@ -916,7 +956,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 				continue
 			}
 			if item.IsIdempotent() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, SignozMetricsDB, false); err != nil {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Metrics, false); err != nil {
 					return err
 				}
 			}
@@ -929,7 +969,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 	}
 
 	for _, migration := range logsMigrations {
-		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, upVersions) {
+		if !m.shouldRunMigration(m.dbNames.Logs, migration.MigrationID, upVersions) {
 			continue
 		}
 		for _, item := range migration.UpItems {
@@ -944,7 +984,7 @@ func (m *MigrationManager) MigrateUpAsync(ctx context.Context, upVersions []uint
 				continue
 			}
 			if item.IsIdempotent() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, SignozLogsDB, false); err != nil {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Logs, false); err != nil {
 					return err
 				}
 			}
@@ -960,7 +1000,7 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 	m.logger.Info("Running migrations down async")
 
 	for _, migration := range TracesMigrations {
-		if !m.shouldRunMigration(SignozTracesDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Traces, migration.MigrationID, downVersions) {
 			continue
 		}
 		for _, item := range migration.DownItems {
@@ -975,7 +1015,7 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 				continue
 			}
 			if item.IsIdempotent() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, SignozTracesDB, false); err != nil {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Traces, false); err != nil {
 					return err
 				}
 			}
@@ -983,7 +1023,7 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 	}
 
 	for _, migration := range MetricsMigrations {
-		if !m.shouldRunMigration(SignozMetricsDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Metrics, migration.MigrationID, downVersions) {
 			continue
 		}
 		for _, item := range migration.DownItems {
@@ -998,7 +1038,7 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 				continue
 			}
 			if item.IsIdempotent() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, SignozMetricsDB, false); err != nil {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Metrics, false); err != nil {
 					return err
 				}
 			}
@@ -1006,7 +1046,7 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 	}
 
 	for _, migration := range LogsMigrations {
-		if !m.shouldRunMigration(SignozLogsDB, migration.MigrationID, downVersions) {
+		if !m.shouldRunMigration(m.dbNames.Logs, migration.MigrationID, downVersions) {
 			continue
 		}
 		for _, item := range migration.DownItems {
@@ -1021,7 +1061,7 @@ func (m *MigrationManager) MigrateDownAsync(ctx context.Context, downVersions []
 				continue
 			}
 			if item.IsIdempotent() {
-				if err := m.RunOperation(ctx, item, migration.MigrationID, SignozLogsDB, false); err != nil {
+				if err := m.RunOperation(ctx, item, migration.MigrationID, m.dbNames.Logs, false); err != nil {
 					return err
 				}
 			}
@@ -1053,6 +1093,8 @@ func (m *MigrationManager) RunOperation(ctx context.Context, operation Operation
 	if m.replicationEnabled {
 		operation = operation.WithReplication()
 	}
+	// Override the hardcoded database name with the configured one
+	operation = operation.SetDatabase(database)
 
 	m.logger.Info("Waiting for running mutations before running the operation")
 
@@ -1140,6 +1182,7 @@ func (m *MigrationManager) RunOperationWithoutUpdate(ctx context.Context, operat
 	if m.replicationEnabled {
 		operation = operation.WithReplication()
 	}
+	operation = operation.SetDatabase(database)
 
 	m.logger.Info("Waiting for running mutations before running the operation")
 	if err := m.WaitForRunningMutations(ctx); err != nil {

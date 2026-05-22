@@ -60,9 +60,15 @@ func createTracesExporter(
 
 	c := cfg.(*Config)
 
-	client, err := newClickhouseClient(ctx, c)
+	client, options, err := newClickhouseClient(ctx, c)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create clickhouse client: %w", err)
+	}
+
+	// Extract database name from DSN, fallback to default if not specified
+	traceDatabase := defaultTraceDatabase
+	if options.Auth.Database != "" {
+		traceDatabase = options.Auth.Database
 	}
 
 	id := uuid.New()
@@ -94,10 +100,11 @@ func createTracesExporter(
 		WithRFCache(rfCache),
 		WithAttributesLimits(c.AttributesLimits),
 		WithExporterID(id),
+		WithTraceDatabase(traceDatabase),
 	}
 
 	exporterOpts := []TraceExporterOption{
-		WithNewUsageCollector(id, client, params.Logger),
+		WithNewUsageCollector(id, client, traceDatabase, params.Logger),
 	}
 
 	exporter, err := newExporter(c, params, writerOpts, exporterOpts)
@@ -116,10 +123,10 @@ func createTracesExporter(
 		exporterhelper.WithRetry(c.BackOffConfig))
 }
 
-func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, error) {
+func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, *clickhouse.Options, error) {
 	options, err := clickhouse.ParseDSN(cfg.Datasource)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// setting maxIdleConnections = numConsumers + 1 to avoid `prepareBatch:clickhouse: acquire conn timeout` error
 	// default to 1 extra idle connection; if queue config present, align with consumer count.
@@ -133,10 +140,10 @@ func newClickhouseClient(ctx context.Context, cfg *Config) (clickhouse.Conn, err
 	}
 	db, err := clickhouse.Open(options)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := db.Ping(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return db, nil
+	return db, options, nil
 }

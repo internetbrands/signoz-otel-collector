@@ -2,6 +2,7 @@ package metadataexporter
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -29,7 +30,6 @@ const (
 	sixHours           = 6 * time.Hour                      // window size for attributes aggregation
 	sixHoursInMs       = int64(sixHours / time.Millisecond) // window size in ms
 	valuTrackerKeysTTL = 45 * time.Minute                   // ttl for keys in value tracker
-	insertStmtQuery    = "INSERT INTO signoz_metadata.distributed_attributes_metadata"
 )
 
 type tagValueCountFromDB struct {
@@ -42,8 +42,9 @@ type metadataExporter struct {
 	cfg Config
 	set exporter.Settings
 
-	conn     driver.Conn
-	keyCache kash.KeyCache
+	conn            driver.Conn
+	keyCache        kash.KeyCache
+	insertStmtQuery string
 
 	tracesTracker  *ValueTracker
 	metricsTracker *ValueTracker
@@ -94,6 +95,12 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 	if err != nil {
 		return nil, err
 	}
+
+	// Extract database name from DSN if provided and config is still default
+	if opts.Auth.Database != "" && cfg.TracesDatabase == "signoz_traces" {
+		cfg.TracesDatabase = opts.Auth.Database
+	}
+
 	conn, err := clickhouse.Open(opts)
 	if err != nil {
 		return nil, err
@@ -193,9 +200,10 @@ func newMetadataExporter(ctx context.Context, cfg Config, set exporter.Settings)
 	}
 
 	e := &metadataExporter{
-		cfg:  cfg,
-		set:  set,
-		conn: conn,
+		cfg:             cfg,
+		set:             set,
+		conn:            conn,
+		insertStmtQuery: fmt.Sprintf("INSERT INTO %s.distributed_attributes_metadata", cfg.MetadataDatabase),
 
 		keyCache: keyCache,
 
@@ -247,13 +255,13 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		&updateParams{
 			logger: e.set.Logger,
 			conn:   e.conn,
-			query: `SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
-						 FROM signoz_logs.distributed_tag_attributes_v2
+			query: fmt.Sprintf(`SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
+						 FROM %s.distributed_tag_attributes_v2
 						 WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
 						 GROUP BY tag_key, tag_data_type
 						 ORDER BY number_value_count DESC, string_value_count DESC, tag_key
 						 LIMIT 1 BY tag_key, tag_data_type
-						 SETTINGS max_threads = 2`,
+						 SETTINGS max_threads = 2`, e.cfg.LogsDatabase),
 			storeFunc:  e.storeLogTagValues,
 			signalName: pipeline.SignalLogs.String(),
 			interval:   e.cfg.MaxDistinctValues.Logs.FetchInterval,
@@ -265,13 +273,13 @@ func (e *metadataExporter) Start(_ context.Context, host component.Host) error {
 		&updateParams{
 			logger: e.set.Logger,
 			conn:   e.conn,
-			query: `SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
-						 FROM signoz_traces.distributed_tag_attributes_v2
+			query: fmt.Sprintf(`SELECT tag_key, tag_data_type, countDistinct(string_value) as string_value_count, countDistinct(number_value) as number_value_count
+						 FROM %s.distributed_tag_attributes_v2
 						 WHERE unix_milli >= toUnixTimestamp(now() - INTERVAL 6 HOUR) * 1000
 						 GROUP BY tag_key, tag_data_type
 						 ORDER BY number_value_count DESC, string_value_count DESC, tag_key
 						 LIMIT 1 BY tag_key, tag_data_type
-						 SETTINGS max_threads = 2`,
+						 SETTINGS max_threads = 2`, e.cfg.TracesDatabase),
 			storeFunc:  e.storeTracesTagValues,
 			signalName: pipeline.SignalTraces.String(),
 			interval:   e.cfg.MaxDistinctValues.Traces.FetchInterval,
@@ -687,7 +695,7 @@ func (e *metadataExporter) PushTraces(ctx context.Context, td ptrace.Traces) err
 	if !e.cfg.Enabled {
 		return nil
 	}
-	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
+	stmt, err := e.conn.PrepareBatch(ctx, e.insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalTraces.String()))
 		return nil
@@ -759,7 +767,7 @@ func (e *metadataExporter) PushMetrics(ctx context.Context, md pmetric.Metrics) 
 	if !e.cfg.Enabled {
 		return nil
 	}
-	stmt, err := e.conn.PrepareBatch(ctx, insertStmtQuery, driver.WithReleaseConnection())
+	stmt, err := e.conn.PrepareBatch(ctx, e.insertStmtQuery, driver.WithReleaseConnection())
 	if err != nil {
 		e.set.Logger.Error("failed to prepare batch", zap.Error(err), zap.String("pipeline", pipeline.SignalMetrics.String()))
 		return nil

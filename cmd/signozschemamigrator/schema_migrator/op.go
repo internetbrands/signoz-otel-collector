@@ -30,6 +30,10 @@ type Operation interface {
 	// WithReplication returns a new operation with the replication set
 	WithReplication() Operation
 
+	// SetDatabase returns a new operation with the database name set
+	// This is used to override the hardcoded database name in migrations
+	SetDatabase(string) Operation
+
 	// ShouldWaitForDistributionQueue returns true if the operation should wait for the distribution queue to be empty
 	ShouldWaitForDistributionQueue() (bool, string, string)
 

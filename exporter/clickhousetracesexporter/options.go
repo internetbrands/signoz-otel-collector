@@ -42,7 +42,7 @@ func WithLogger(logger *zap.Logger) WriterOption {
 	}
 }
 
-func WithNewUsageCollector(id uuid.UUID, db driver.Conn, logger *zap.Logger) TraceExporterOption {
+func WithNewUsageCollector(id uuid.UUID, db driver.Conn, traceDatabase string, logger *zap.Logger) TraceExporterOption {
 	return func(e *clickhouseTracesExporter) {
 		e.usageCollector = usage.NewUsageCollector(
 			id,
@@ -50,7 +50,7 @@ func WithNewUsageCollector(id uuid.UUID, db driver.Conn, logger *zap.Logger) Tra
 			usage.Options{
 				ReportingInterval: usage.DefaultCollectionInterval,
 			},
-			"signoz_traces",
+			traceDatabase,
 			UsageExporter,
 			logger,
 		)
@@ -99,5 +99,11 @@ func WithAttributesLimits(limits AttributesLimits) WriterOption {
 func WithExporterID(id uuid.UUID) WriterOption {
 	return func(e *SpanWriter) {
 		e.exporterId = id
+	}
+}
+
+func WithTraceDatabase(database string) WriterOption {
+	return func(e *SpanWriter) {
+		e.traceDatabase = database
 	}
 }

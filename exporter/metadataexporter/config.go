@@ -89,6 +89,12 @@ type Config struct {
 
 	DSN string `mapstructure:"dsn"`
 
+	// Database names for different signal types
+	MetadataDatabase string `mapstructure:"metadata_database"`
+	TracesDatabase   string `mapstructure:"traces_database"`
+	LogsDatabase     string `mapstructure:"logs_database"`
+	MetricsDatabase string `mapstructure:"metrics_database"`
+
 	MaxDistinctValues MaxDistinctValuesConfig `mapstructure:"max_distinct_values"`
 
 	AlwaysIncludeAttributes AlwaysIncludeAttributesConfig `mapstructure:"always_include_attributes"`
